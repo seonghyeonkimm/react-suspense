@@ -29,13 +29,6 @@ const SUSPENSE_CONFIG = {
   busyMinDurationMs: 700,
 }
 
-// 🐨 create a pokemonResourceCache object
-
-// 🐨 create a getPokemonResource function which accepts a name checks the cache
-// for an existing resource. If there is none, then it creates a resource
-// and inserts it into the cache. Finally the function should return the
-// resource.
-
 function createPokemonResource(pokemonName) {
   return createResource(fetchPokemon(pokemonName))
 }
@@ -44,6 +37,7 @@ function App() {
   const [pokemonName, setPokemonName] = React.useState('')
   const [startTransition, isPending] = React.useTransition(SUSPENSE_CONFIG)
   const [pokemonResource, setPokemonResource] = React.useState(null)
+  const getPokemonResource = usePokemonResourceCache();
 
   React.useEffect(() => {
     if (!pokemonName) {
@@ -52,9 +46,9 @@ function App() {
     }
     startTransition(() => {
       // 🐨 change this to getPokemonResource instead
-      setPokemonResource(createPokemonResource(pokemonName))
+      setPokemonResource(getPokemonResource(pokemonName))
     })
-  }, [pokemonName, startTransition])
+  }, [getPokemonResource, pokemonName, startTransition])
 
   function handleSubmit(newPokemonName) {
     setPokemonName(newPokemonName)
@@ -87,5 +81,49 @@ function App() {
     </div>
   )
 }
+const ResourceContext = React.createContext();
 
-export default App
+function usePokemonResourceCache() {
+  const context = React.useContext(ResourceContext)
+  if (!context) {
+    throw new Error(
+      `usePokemonResourceCache should be used within a PokemonCacheProvider`,
+    )
+  }
+  return context
+}
+
+function PokemonCacheProvider({ children, cacheTime = 5000 }) {
+  const cache = React.useRef({});
+
+  const getPokemonResource = React.useCallback((pokemonName) => {
+    const key = pokemonName.toLowerCase();
+    let { resource, fetchedAt = new Date() } = cache.current[key] || {};
+    if (resource && new Date() - fetchedAt <= cacheTime) return resource;
+    cache.current[key] = {
+      fetchedAt: new Date(),
+      resource: createPokemonResource(pokemonName),
+    };
+
+    return cache.current[key].resource;
+  }, [cacheTime])
+
+  return (
+    <ResourceContext.Provider value={getPokemonResource}>
+      {children}
+    </ResourceContext.Provider>
+  );
+}
+
+
+
+const AppWithProvider = () => {
+  return (
+    <PokemonCacheProvider>
+      <App />
+    </PokemonCacheProvider>
+  )
+
+}
+
+export default AppWithProvider
